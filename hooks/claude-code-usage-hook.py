@@ -31,19 +31,32 @@ STATE_DIR = os.path.join(RUFLO, "data", "hook-state")
 DAILY_LIMIT = 200_000
 SOFT_LIMIT = 160_000
 
-# Per-token pricing (USD) by model family. Input rate also used (scaled) for cache.
-PRICES = {
-    "opus":   {"in": 15e-6, "out": 75e-6},
-    "sonnet": {"in": 3e-6,  "out": 15e-6},
-    "haiku":  {"in": 1e-6,  "out": 5e-6},
-    "fable":  {"in": 15e-6, "out": 75e-6},
-}
+# Per-token pricing (USD). Matched by substring, most specific first: the same
+# family name has had different prices across generations (Opus 4/4.1 were
+# $15/$75 per MTok, Opus 4.5+ $5/$25, Opus 5.5 $4/$20). Input rate is also
+# used (scaled) for cache. List prices as of 2026-10.
+PRICE_TABLE = [
+    ("opus-5-5",   {"in": 4e-6,   "out": 20e-6}),
+    ("opus-5",     {"in": 5e-6,   "out": 25e-6}),
+    ("opus-4-8",   {"in": 5e-6,   "out": 25e-6}),
+    ("opus-4-7",   {"in": 5e-6,   "out": 25e-6}),
+    ("opus-4-6",   {"in": 5e-6,   "out": 25e-6}),
+    ("opus-4-5",   {"in": 5e-6,   "out": 25e-6}),
+    ("opus",       {"in": 15e-6,  "out": 75e-6}),   # Opus 4 / 4.1 and older
+    ("sonnet-5",   {"in": 2e-6,   "out": 10e-6}),   # Sonnet 5 and 5.5
+    ("sonnet",     {"in": 3e-6,   "out": 15e-6}),
+    ("haiku-5-5",  {"in": 0.1e-6, "out": 0.5e-6}),
+    ("haiku",      {"in": 1e-6,   "out": 5e-6}),
+    ("fable",      {"in": 10e-6,  "out": 50e-6}),
+    ("mythos",     {"in": 10e-6,  "out": 50e-6}),
+]
+PRICES = dict(PRICE_TABLE)
 DEFAULT_PRICE = PRICES["sonnet"]
 
 
 def _price_for(model: str):
     m = (model or "").lower()
-    for key, price in PRICES.items():
+    for key, price in PRICE_TABLE:
         if key in m:
             return price
     return DEFAULT_PRICE
