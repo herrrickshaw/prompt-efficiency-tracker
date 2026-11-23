@@ -171,3 +171,46 @@ def test_main_reports_both_problems_in_one_notification(hb, monkeypatch):
 
 def test_stale_threshold_constant(hb):
     assert hb.STALE_AFTER_HOURS == 30
+
+
+# ---- exact threshold boundaries (clock frozen) ------------------------------------------------------
+
+NOW = datetime(2026, 11, 20, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def frozen(hb, monkeypatch):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW if tz else NOW.replace(tzinfo=None)
+
+    monkeypatch.setattr(hb, "datetime", Frozen)
+    return hb
+
+
+def stamp(hours_before):
+    return (NOW - timedelta(hours=hours_before)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def test_age_exactly_at_threshold_is_no_longer_fresh(frozen):
+    write_db(frozen.DB_PATH, stamp(30))
+    assert frozen._db_freshness() == (False, "no transcripts found, nothing to compare against")
+    write_db(Path(frozen.HOME) / "fresh.db", stamp(29.99))
+    frozen.DB_PATH = str(Path(frozen.HOME) / "fresh.db")
+    assert frozen._db_freshness() == (False, f"last row {timedelta(hours=29.99)} ago")
+
+
+def test_session_exactly_threshold_newer_than_last_row_is_not_stale(frozen):
+    last = NOW - timedelta(hours=60)
+    write_db(frozen.DB_PATH, last.strftime("%Y-%m-%d %H:%M:%S"))
+    touch_transcript(frozen.HOME, 0)
+    f = next(Path(frozen.HOME).rglob("s.jsonl"))
+    exact = (last + timedelta(hours=30)).timestamp()
+    os.utime(f, (exact, exact))
+    stale, detail = frozen._db_freshness()
+    assert stale is False and detail == f"last row {timedelta(hours=60)} ago, no newer session activity"
+    just_over = exact + 1
+    os.utime(f, (just_over, just_over))
+    stale, detail = frozen._db_freshness()
+    assert stale is True and detail == f"last DB row {timedelta(hours=60)} ago, but sessions ran as recently as {NOW - datetime.fromtimestamp(just_over, tz=timezone.utc)} ago"
